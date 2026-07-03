@@ -1,0 +1,272 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: universal-deploy
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+    pipeline.openshift.io/type: deploy
+  annotations:
+    pipeline.openshift.io/description: >
+      Reusable deploy pipeline for any application. Clones deployment manifests
+      from Git and deploys to OpenShift using plain YAML, Kustomize, or Helm.
+      Supports environment-specific paths and namespaces.
+spec:
+  params:
+    - name: git-url
+      type: string
+      description: Git repository URL containing deployment manifests
+    - name: git-revision
+      type: string
+      description: Git revision (branch, tag, or commit SHA)
+      default: main
+    - name: deploy-mode
+      type: string
+      description: "Deployment mode: yaml, kustomize, helm, or argocd"
+      default: kustomize
+    - name: deploy-path
+      type: string
+      description: >
+        Path within the repo to deploy manifests. For yaml/kustomize this is the
+        overlay directory. For helm this is the chart directory.
+    - name: target-namespace
+      type: string
+      description: OpenShift namespace to deploy into
+    - name: image
+      type: string
+      description: Fully qualified image to deploy (repository:tag)
+      default: ""
+    - name: helm-release-name
+      type: string
+      description: Helm release name (required when deploy-mode is helm)
+      default: app
+    - name: helm-values-file
+      type: string
+      description: Path to Helm values file relative to repo root (helm mode)
+      default: ""
+    - name: wait-for-rollout
+      type: string
+      description: Wait for deployment rollout to complete
+      default: "true"
+    - name: rollout-timeout
+      type: string
+      description: Rollout timeout in seconds
+      default: "300"
+    - name: argocd-app-name
+      type: string
+      description: Argo CD Application name to sync (required when deploy-mode is argocd)
+      default: ""
+    - name: argocd-server
+      type: string
+      description: Argo CD API server host (in-cluster default)
+      default: argocd-server.argocd.svc.cluster.local
+  workspaces:
+    - name: shared-workspace
+      description: Workspace for cloned deployment manifests
+    - name: kubeconfig
+      optional: true
+      description: Optional kubeconfig for remote cluster deployment
+  tasks:
+    - name: fetch-manifests
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+        - name: DELETE_EXISTING
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+
+    - name: deploy-plain-yaml
+      when:
+        - input: $(params.deploy-mode)
+          operator: in
+          values: ["yaml"]
+      runAfter:
+        - fetch-manifests
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: openshift-client
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SCRIPT
+          value: |
+            set -euo pipefail
+            MANIFEST_DIR="$(workspaces.manifest_dir.path)/$(params.deploy-path)"
+            NS="$(params.target-namespace)"
+            IMG="$(params.image)"
+
+            oc get namespace "${NS}" >/dev/null 2>&1 || oc create namespace "${NS}"
+
+            if [ -n "${IMG}" ]; then
+              find "${MANIFEST_DIR}" -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 | \
+                xargs -0 sed -i "s|IMAGE_PLACEHOLDER|${IMG}|g"
+            fi
+
+            oc apply -f "${MANIFEST_DIR}" -n "${NS}"
+
+            if [ "$(params.wait-for-rollout)" = "true" ]; then
+              for deploy in $(oc get deploy -n "${NS}" -o name 2>/dev/null || true); do
+                oc rollout status "${deploy}" -n "${NS}" --timeout="$(params.rollout-timeout)s" || true
+              done
+            fi
+      workspaces:
+        - name: manifest_dir
+          workspace: shared-workspace
+        - name: kubeconfig_dir
+          workspace: kubeconfig
+
+    - name: deploy-kustomize
+      when:
+        - input: $(params.deploy-mode)
+          operator: in
+          values: ["kustomize"]
+      runAfter:
+        - fetch-manifests
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: openshift-client
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SCRIPT
+          value: |
+            set -euo pipefail
+            KUSTOMIZE_DIR="$(workspaces.manifest_dir.path)/$(params.deploy-path)"
+            NS="$(params.target-namespace)"
+            IMG="$(params.image)"
+
+            oc get namespace "${NS}" >/dev/null 2>&1 || oc create namespace "${NS}"
+
+            if [ -n "${IMG}" ]; then
+              REPO="${IMG%:*}"
+              TAG="${IMG##*:}"
+              cd "${KUSTOMIZE_DIR}"
+              kustomize edit set image "sample-camel=${IMG}" 2>/dev/null || \
+                kustomize edit set image "IMAGE_PLACEHOLDER=${IMG}"
+            fi
+
+            oc apply -k "${KUSTOMIZE_DIR}" -n "${NS}"
+
+            if [ "$(params.wait-for-rollout)" = "true" ]; then
+              for deploy in $(oc get deploy -n "${NS}" -o name 2>/dev/null || true); do
+                oc rollout status "${deploy}" -n "${NS}" --timeout="$(params.rollout-timeout)s" || true
+              done
+            fi
+      workspaces:
+        - name: manifest_dir
+          workspace: shared-workspace
+        - name: kubeconfig_dir
+          workspace: kubeconfig
+
+    - name: deploy-helm
+      when:
+        - input: $(params.deploy-mode)
+          operator: in
+          values: ["helm"]
+      runAfter:
+        - fetch-manifests
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: openshift-client
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SCRIPT
+          value: |
+            set -euo pipefail
+            CHART_DIR="$(workspaces.manifest_dir.path)/$(params.deploy-path)"
+            NS="$(params.target-namespace)"
+            IMG="$(params.image)"
+            VALUES_FILE="$(params.helm-values-file)"
+            RELEASE="$(params.helm-release-name)"
+
+            oc get namespace "${NS}" >/dev/null 2>&1 || oc create namespace "${NS}"
+
+            HELM_ARGS=(upgrade --install "${RELEASE}" "${CHART_DIR}" --namespace "${NS}" --wait)
+            if [ -n "${VALUES_FILE}" ]; then
+              HELM_ARGS+=(--values "$(workspaces.manifest_dir.path)/${VALUES_FILE}")
+            fi
+            if [ -n "${IMG}" ]; then
+              HELM_ARGS+=(--set "image.repository=${IMG%:*}" --set "image.tag=${IMG##*:}")
+            fi
+
+            helm "${HELM_ARGS[@]}"
+      workspaces:
+        - name: manifest_dir
+          workspace: shared-workspace
+        - name: kubeconfig_dir
+          workspace: kubeconfig
+
+    - name: sync-argocd
+      when:
+        - input: $(params.deploy-mode)
+          operator: in
+          values: ["argocd"]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: openshift-client
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SCRIPT
+          value: |
+            set -euo pipefail
+            APP="$(params.argocd-app-name)"
+            SERVER="$(params.argocd-server)"
+            if [ -z "${APP}" ]; then
+              echo "argocd-app-name is required when deploy-mode=argocd"
+              exit 1
+            fi
+            if [ -z "${ARGOCD_AUTH_TOKEN:-}" ]; then
+              echo "ARGOCD_AUTH_TOKEN env var is required — mount argocd-token secret via taskRunSpecs"
+              exit 1
+            fi
+            echo "Syncing Argo CD application ${APP} via ${SERVER}"
+            curl -sfk \
+              -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -X POST "https://${SERVER}/api/v1/applications/${APP}/sync" \
+              -d '{"prune":false}'
+            if [ "$(params.wait-for-rollout)" = "true" ]; then
+              for _ in $(seq 1 60); do
+                response=$(curl -sfk -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \
+                  "https://${SERVER}/api/v1/applications/${APP}")
+                sync_status=$(echo "${response}" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+                health_status=$(echo "${response}" | grep -o '"health":{"status":"[^"]*"' | cut -d'"' -f6 || true)
+                echo "sync=${sync_status:-Unknown} health=${health_status:-Unknown}"
+                if [ "${sync_status}" = "Synced" ] && [ "${health_status}" = "Healthy" ]; then
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "Timed out waiting for Argo CD application ${APP} to become Synced and Healthy"
+              exit 1
+            fi

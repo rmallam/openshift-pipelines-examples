@@ -1,0 +1,61 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: sample-camel
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - env: dev
+            namespace: sample-camel-dev
+            path: deploy/kustomize/overlays/dev
+            autoSync: "true"
+          - env: staging
+            namespace: sample-camel-staging
+            path: deploy/kustomize/overlays/staging
+            autoSync: "true"
+          - env: prod
+            namespace: sample-camel-prod
+            path: deploy/kustomize/overlays/prod
+            autoSync: "false"
+  templatePatch: |
+    {{- if eq .autoSync "true" }}
+    spec:
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    {{- end }}
+  template:
+    metadata:
+      name: 'sample-camel-{{.env}}'
+      labels:
+        app.kubernetes.io/name: sample-camel
+        app.kubernetes.io/environment: '{{.env}}'
+        app.kubernetes.io/part-of: tekton-pipelines
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: tekton
+      source:
+        repoURL: https://github.com/rmallam/openshift-pipelines-examples.git
+        targetRevision: main
+        path: '{{.path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - RespectIgnoreDifferences=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m

@@ -1,0 +1,59 @@
+---
+description: Always reuse OpenShift Pipelines inbuilt tasks — never create custom Task CRs
+alwaysApply: true
+---
+
+# Reuse Inbuilt Tasks
+
+## Rule
+
+**Never create new Tekton Task definitions in this repository.** All pipeline steps must reference tasks already installed by the OpenShift Pipelines operator in the `openshift-pipelines` namespace.
+
+## How to reference tasks
+
+Use the cluster resolver (required for OpenShift Pipelines 1.17+):
+
+```yaml
+taskRef:
+  resolver: cluster
+  params:
+    - name: kind
+      value: task
+    - name: name
+      value: git-clone        # task name from openshift-pipelines
+    - name: namespace
+      value: openshift-pipelines
+```
+
+Do **not** use deprecated `kind: ClusterTask`.
+
+## Available inbuilt tasks (use these)
+
+| Task | Purpose |
+|------|---------|
+| `git-clone` | Clone source from Git |
+| `buildah` | Build and push container images |
+| `maven` | Maven build/test (Java, Camel, Quarkus) |
+| `npm` | Node.js scripts and tests |
+| `golang-test` | Go tests |
+| `python` | Python scripts and tests |
+| `openshift-client` | `oc`/`helm` commands, YAML/Kustomize deploy, custom scripts |
+| `s2i-java`, `s2i-nodejs`, `s2i-python`, etc. | Source-to-image builds |
+| `skopeo-copy` | Copy images between registries |
+| `cleanup` | Workspace cleanup |
+
+List tasks on your cluster: `oc get tasks -n openshift-pipelines`
+
+## When you need functionality not covered by a single task
+
+Compose multiple inbuilt tasks in a Pipeline, or use `openshift-client` with a `SCRIPT` parameter for `oc apply`, `oc apply -k`, or `helm upgrade --install`.
+
+## Do not
+
+- Create `kind: Task` YAML files in this repo
+- Copy task definitions from Tekton Hub into this repo
+- Use Hub/Git resolvers to pull tasks when an inbuilt equivalent exists
+
+## Helm deploy note
+
+Community Helm cluster tasks (`helm-upgrade-from-source`) were removed from the operator in OCP Pipelines 1.17. Use the inbuilt `openshift-client` task with `helm upgrade --install` in the `SCRIPT` parameter instead.

@@ -1,0 +1,41 @@
+# GitHub webhook configuration reference.
+#
+# Create the secret in the cicd namespace:
+#   oc create secret generic github-webhook-secret \
+#     --from-literal=secretToken=<random-token> \
+#     -n cicd
+#
+# GitHub repo → Settings → Webhooks → Add webhook:
+#   Payload URL:  https://tekton-webhook-<cicd-namespace>.apps.<cluster-domain>
+#   Content type: application/json
+#   Secret:       same value as secretToken above
+#   Events:       Just the push event
+#
+# After apply, get the URL:
+#   oc get route tekton-webhook -n cicd -o jsonpath='https://{.spec.host}{"\n"}'
+
+github:
+  webhookSecretName: github-webhook-secret
+  events:
+    - push
+
+triggers:
+  build:
+    name: sample-camel-build
+    paths:
+      - apps/sample-camel/
+    branches: "*"   # any branch
+
+  devDeploy:
+    name: sample-camel-dev-deploy
+    paths:
+      - apps/sample-camel/
+      - deploy/kustomize/overlays/dev/
+    branches:
+      - main
+    deployMode: argocd
+    argocdApp: sample-camel-dev
+    targetNamespace: sample-camel-dev
+
+# Staging and prod are intentionally excluded — promote via PR to their overlays
+# or manual PipelineRun / Argo CD sync.

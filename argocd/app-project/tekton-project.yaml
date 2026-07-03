@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: tekton
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+spec:
+  description: Tekton CI pipelines and sample-camel workload deployments
+  sourceRepos:
+    - https://github.com/rmallam/openshift-pipelines-examples.git
+    - '*'
+  destinations:
+    - namespace: cicd
+      server: https://kubernetes.default.svc
+    - namespace: sample-camel-dev
+      server: https://kubernetes.default.svc
+    - namespace: sample-camel-staging
+      server: https://kubernetes.default.svc
+    - namespace: sample-camel-prod
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  orphanedResources:
+    warn: true

@@ -1,0 +1,80 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: tekton-webhook
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+    app.kubernetes.io/component: triggers
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    # Build on any branch when sample-camel app source changes.
+    - name: sample-camel-build
+      interceptors:
+        - ref:
+            name: github
+            kind: ClusterInterceptor
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: secretToken
+            - name: eventTypes
+              value: ["push"]
+        - ref:
+            name: cel
+            kind: ClusterInterceptor
+          params:
+            - name: filter
+              value: >
+                body.commits.exists(c,
+                  (has(c.modified) && c.modified.exists(m, m.startsWith('apps/sample-camel/'))) ||
+                  (has(c.added) && c.added.exists(m, m.startsWith('apps/sample-camel/')))
+                )
+            - name: overlays
+              value:
+                - key: app_path
+                  expression: "'apps/sample-camel'"
+      bindings:
+        - ref: github-push
+      template:
+        ref: sample-camel-build
+
+    # Dev-only: sync to cluster when main branch changes (app or dev deploy manifests).
+    - name: sample-camel-dev-deploy
+      interceptors:
+        - ref:
+            name: github
+            kind: ClusterInterceptor
+          params:
+            - name: secretRef
+              value:
+                secretName: github-webhook-secret
+                secretKey: secretToken
+            - name: eventTypes
+              value: ["push"]
+        - ref:
+            name: cel
+            kind: ClusterInterceptor
+          params:
+            - name: filter
+              value: >
+                body.ref == 'refs/heads/main' &&
+                body.commits.exists(c,
+                  (has(c.modified) && c.modified.exists(m,
+                    m.startsWith('apps/sample-camel/') ||
+                    m.startsWith('deploy/kustomize/overlays/dev/')
+                  )) ||
+                  (has(c.added) && c.added.exists(m,
+                    m.startsWith('apps/sample-camel/') ||
+                    m.startsWith('deploy/kustomize/overlays/dev/')
+                  ))
+                )
+            - name: overlays
+              value:
+                - key: environment
+                  expression: "'dev'"
+      bindings:
+        - ref: github-push
+      template:
+        ref: sample-camel-dev-deploy

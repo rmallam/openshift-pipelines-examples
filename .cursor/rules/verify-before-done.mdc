@@ -1,0 +1,37 @@
+---
+description: Verify pipeline YAML and app builds before marking work complete
+alwaysApply: true
+---
+
+# Verify Before Done
+
+After any pipeline, deploy manifest, or application change, verify before telling the user the work is finished.
+
+## Required checks
+
+1. **YAML validity** — ensure all Tekton and Kubernetes manifests parse correctly.
+2. **Task references** — confirm every `taskRef` uses the cluster resolver pointing to `openshift-pipelines`.
+3. **No custom tasks** — grep for `kind: Task` and confirm zero custom task definitions exist.
+4. **App build** (when app source changed):
+   ```bash
+   cd apps/sample-camel && mvn -B test
+   ```
+5. **Kustomize build** (when kustomize overlays changed):
+   ```bash
+   kustomize build deploy/kustomize/overlays/dev
+   kustomize build deploy/kustomize/overlays/staging
+   kustomize build deploy/kustomize/overlays/prod
+   ```
+6. **Helm lint** (when chart changed):
+   ```bash
+   helm lint deploy/helm/sample-camel
+   helm template sample-camel deploy/helm/sample-camel -f deploy/helm/sample-camel/values-prod.yaml
+   ```
+
+## Agent completion checklist
+
+- [ ] No custom Task CRs created
+- [ ] All pipelines use cluster resolver for inbuilt tasks
+- [ ] Deploy samples exist for yaml, kustomize, and helm modes
+- [ ] Environment overlays cover dev, staging, and prod
+- [ ] PipelineRun examples reference correct paths and parameters

@@ -1,0 +1,58 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: sample-camel-build
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+    app.kubernetes.io/name: sample-camel
+spec:
+  params:
+    - name: git-repo-url
+    - name: git-revision
+    - name: git-ref
+    - name: git-branch
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: sample-camel-build-
+        labels:
+          app.kubernetes.io/name: sample-camel
+          app.kubernetes.io/trigger: build
+          tekton.dev/pipeline: universal-build
+          triggers.tekton.dev/eventid: $(tt.params.git-revision)
+        annotations:
+          git-branch: $(tt.params.git-branch)
+          git-ref: $(tt.params.git-ref)
+      spec:
+        pipelineRef:
+          name: universal-build
+        serviceAccountName: pipeline-runner
+        params:
+          - name: git-url
+            value: $(tt.params.git-repo-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+          - name: git-subdirectory
+            value: apps/sample-camel
+          - name: image
+            value: image-registry.openshift-image-registry.svc:5000/sample-camel-dev/sample-camel:latest
+          - name: dockerfile
+            value: ./Dockerfile
+          - name: context
+            value: apps/sample-camel
+          - name: test-type
+            value: maven
+          - name: test-goals
+            value:
+              - test
+          - name: test-subdirectory
+            value: apps/sample-camel
+          - name: tls-verify
+            value: "false"
+        workspaces:
+          - name: shared-workspace
+            persistentVolumeClaim:
+              claimName: pipeline-workspace-pvc
+          - name: docker-credentials
+            emptyDir: {}

@@ -1,0 +1,37 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: sample-camel-deploy-prod-
+  labels:
+    app.kubernetes.io/name: sample-camel
+    app.kubernetes.io/environment: prod
+    tekton.dev/pipeline: universal-deploy
+spec:
+  pipelineRef:
+    name: universal-deploy
+  serviceAccountName: pipeline-runner
+  params:
+    - name: git-url
+      value: https://github.com/rmallam/openshift-pipelines-examples.git
+    - name: git-revision
+      value: main
+    - name: deploy-mode
+      value: helm
+    - name: deploy-path
+      value: deploy/helm/sample-camel
+    - name: target-namespace
+      value: sample-camel-prod
+    - name: image
+      value: image-registry.openshift-image-registry.svc:5000/sample-camel-prod/sample-camel:1.0.0
+    - name: helm-release-name
+      value: sample-camel-prod
+    - name: helm-values-file
+      value: deploy/helm/sample-camel/values-prod.yaml
+    - name: wait-for-rollout
+      value: "true"
+    - name: rollout-timeout
+      value: "600"
+  workspaces:
+    - name: shared-workspace
+      persistentVolumeClaim:
+        claimName: pipeline-workspace-pvc

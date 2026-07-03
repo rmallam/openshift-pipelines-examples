@@ -1,0 +1,244 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: universal-build
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+    pipeline.openshift.io/type: build
+  annotations:
+    pipeline.openshift.io/description: >
+      Reusable build pipeline for any language app. Clones source from Git,
+      runs optional language-specific tests using inbuilt OpenShift Pipelines
+      tasks, builds a container image with buildah, and pushes to a registry.
+spec:
+  params:
+    - name: git-url
+      type: string
+      description: Git repository URL containing application source
+    - name: git-revision
+      type: string
+      description: Git revision (branch, tag, or commit SHA)
+      default: main
+    - name: git-subdirectory
+      type: string
+      description: Subdirectory within the repo containing the app source
+      default: ""
+    - name: image
+      type: string
+      description: Fully qualified image name to build and push (e.g. registry.example.com/ns/app:tag)
+    - name: dockerfile
+      type: string
+      description: Path to Dockerfile relative to source root
+      default: ./Dockerfile
+    - name: context
+      type: string
+      description: Build context directory relative to source root
+      default: .
+    - name: test-type
+      type: string
+      description: "Test runner: maven, npm, golang, python, script, skip"
+      default: skip
+    - name: test-goals
+      type: array
+      description: Test command goals (maven goals, npm script name, or shell command for script type)
+      default:
+        - test
+    - name: test-subdirectory
+      type: string
+      description: Subdirectory for test execution
+      default: .
+    - name: tls-verify
+      type: string
+      description: Verify TLS when pushing to registry
+      default: "true"
+    - name: storage-driver
+      type: string
+      description: buildah storage driver
+      default: vfs
+  workspaces:
+    - name: shared-workspace
+      description: Shared workspace for source code and build artifacts
+    - name: docker-credentials
+      optional: true
+      description: Docker registry push credentials secret
+  tasks:
+    - name: fetch-repository
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+        - name: SUBDIRECTORY
+          value: $(params.git-subdirectory)
+        - name: DELETE_EXISTING
+          value: "true"
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+
+    - name: run-maven-tests
+      when:
+        - input: $(params.test-type)
+          operator: in
+          values: ["maven"]
+      runAfter:
+        - fetch-repository
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: maven
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: GOALS
+          value: $(params.test-goals[*])
+        - name: SUBDIRECTORY
+          value: $(params.test-subdirectory)
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    - name: run-npm-tests
+      when:
+        - input: $(params.test-type)
+          operator: in
+          values: ["npm"]
+      runAfter:
+        - fetch-repository
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: npm
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SCRIPT
+          value: $(params.test-goals[0])
+        - name: SUBDIRECTORY
+          value: $(params.test-subdirectory)
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    - name: run-golang-tests
+      when:
+        - input: $(params.test-type)
+          operator: in
+          values: ["golang"]
+      runAfter:
+        - fetch-repository
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: golang-test
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SUBDIRECTORY
+          value: $(params.test-subdirectory)
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    - name: run-python-tests
+      when:
+        - input: $(params.test-type)
+          operator: in
+          values: ["python"]
+      runAfter:
+        - fetch-repository
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: python
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SCRIPT
+          value: $(params.test-goals[0])
+        - name: SUBDIRECTORY
+          value: $(params.test-subdirectory)
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    - name: run-script-tests
+      when:
+        - input: $(params.test-type)
+          operator: in
+          values: ["script"]
+      runAfter:
+        - fetch-repository
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: openshift-client
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: SCRIPT
+          value: |
+            set -euo pipefail
+            cd "$(workspaces.manifest_dir.path)/$(params.test-subdirectory)"
+            $(params.test-goals[0])
+      workspaces:
+        - name: manifest_dir
+          workspace: shared-workspace
+
+    - name: build-and-push
+      runAfter:
+        - fetch-repository
+        - run-maven-tests
+        - run-npm-tests
+        - run-golang-tests
+        - run-python-tests
+        - run-script-tests
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: $(params.image)
+        - name: DOCKERFILE
+          value: $(params.dockerfile)
+        - name: CONTEXT
+          value: $(params.context)
+        - name: TLSVERIFY
+          value: $(params.tls-verify)
+        - name: STORAGE_DRIVER
+          value: $(params.storage-driver)
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+        - name: dockerconfig
+          workspace: docker-credentials

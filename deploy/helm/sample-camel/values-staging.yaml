@@ -1,0 +1,18 @@
+replicaCount: 2
+
+image:
+  repository: IMAGE_PLACEHOLDER
+  tag: latest
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+route:
+  enabled: false
+
+environment: staging

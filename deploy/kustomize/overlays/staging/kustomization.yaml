@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sample-camel-staging
+
+resources:
+  - ../../base
+
+commonLabels:
+  app.kubernetes.io/environment: staging
+
+patches:
+  - target:
+      kind: Deployment
+      name: sample-camel
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+images:
+  - name: sample-camel
+    newName: image-registry.openshift-image-registry.svc:5000/sample-camel-staging/sample-camel
+    newTag: latest

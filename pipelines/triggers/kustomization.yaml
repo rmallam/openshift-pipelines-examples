@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rbac/eventlistener-rbac.yaml
+  - trigger-bindings/github-push.yaml
+  - trigger-templates/sample-camel-build.yaml
+  - trigger-templates/sample-camel-dev-deploy.yaml
+  - eventlistener.yaml
+  - route.yaml

@@ -1,0 +1,27 @@
+---
+description: Core coding standards for tekton pipelines repo
+alwaysApply: true
+---
+
+# Coding Standards
+
+## Scope and design
+
+- **Minimize diff** — smallest change that fixes the root cause. No drive-by refactors.
+- **No over-engineering** — no extra abstractions for one-off cases; inline when clearer.
+- **Match existing style** — naming, YAML structure, and parameter conventions of surrounding pipelines.
+- **Comments** — only for non-obvious pipeline logic; manifests should read clearly without noise.
+
+## Pipeline conventions
+
+- Use `apiVersion: tekton.dev/v1` for all new pipelines and pipeline runs.
+- Reference inbuilt tasks via the **cluster resolver** (`openshift-pipelines` namespace).
+- Parameter names use kebab-case (`git-url`, `deploy-mode`, `target-namespace`).
+- Environment-specific values belong in `config/environments.yaml` or overlay directories, not hardcoded in pipelines.
+- **Argo CD** manages continuous deploy state; Tekton PipelineRuns are ephemeral and must not be synced by Argo CD.
+
+## Application conventions
+
+- Sample apps live under `apps/<app-name>/`.
+- Each app must include a `Dockerfile` and at least one test.
+- Deployment manifests live under `deploy/` with separate paths per mode (plain-yaml, kustomize, helm).

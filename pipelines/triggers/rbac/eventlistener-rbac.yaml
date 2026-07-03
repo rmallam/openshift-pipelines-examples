@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-triggers-sa
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+    app.kubernetes.io/component: triggers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tekton-triggers-eventlistener
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+rules:
+  - apiGroups: ["triggers.tekton.dev"]
+    resources: ["eventlisteners", "triggerbindings", "triggertemplates", "triggers", "interceptors"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelineruns", "pipelineruns/status"]
+    verbs: ["create", "get", "list", "patch", "watch"]
+  - apiGroups: [""]
+    resources: ["events", "secrets"]
+    verbs: ["get", "list", "watch", "create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-triggers-eventlistener
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tekton-triggers-eventlistener
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+---
+# ClusterRoles installed by the OpenShift Pipelines / Triggers operator.
+# If bind fails, verify: oc get clusterrole | grep tekton-triggers
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-triggers-cicd-el-roles
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-roles
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: cicd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tekton-triggers-cicd-el-clusterroles
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-clusterroles
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: cicd

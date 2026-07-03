@@ -1,0 +1,30 @@
+# Environment configuration reference for pipeline parameters.
+# Use these values when creating PipelineRuns for each target environment.
+
+environments:
+  dev:
+    namespace: sample-camel-dev
+    plainYamlPath: deploy/plain-yaml/overlays/dev
+    kustomizePath: deploy/kustomize/overlays/dev
+    helmReleaseName: sample-camel-dev
+    helmValuesFile: deploy/helm/sample-camel/values-dev.yaml
+    helmChartPath: deploy/helm/sample-camel
+    argocdApp: sample-camel-dev
+
+  staging:
+    namespace: sample-camel-staging
+    plainYamlPath: deploy/plain-yaml/overlays/staging
+    kustomizePath: deploy/kustomize/overlays/staging
+    helmReleaseName: sample-camel-staging
+    helmValuesFile: deploy/helm/sample-camel/values-staging.yaml
+    helmChartPath: deploy/helm/sample-camel
+    argocdApp: sample-camel-staging
+
+  prod:
+    namespace: sample-camel-prod
+    plainYamlPath: deploy/plain-yaml/overlays/prod
+    kustomizePath: deploy/kustomize/overlays/prod
+    helmReleaseName: sample-camel-prod
+    helmValuesFile: deploy/helm/sample-camel/values-prod.yaml
+    helmChartPath: deploy/helm/sample-camel
+    argocdApp: sample-camel-prod

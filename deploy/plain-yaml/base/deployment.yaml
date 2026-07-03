@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-camel
+  labels:
+    app.kubernetes.io/name: sample-camel
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sample-camel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sample-camel
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: sample-camel
+          image: sample-camel:latest
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /api/hello
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/hello
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-camel
+  labels:
+    app.kubernetes.io/name: sample-camel
+spec:
+  selector:
+    app.kubernetes.io/name: sample-camel
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: sample-camel
+  labels:
+    app.kubernetes.io/name: sample-camel
+spec:
+  to:
+    kind: Service
+    name: sample-camel
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

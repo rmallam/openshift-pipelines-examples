@@ -1,0 +1,33 @@
+# Optional cluster-scoped RBAC for deploying to multiple namespaces.
+# Apply this when pipeline-runner needs to deploy across namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pipeline-runner-deploy
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "services", "configmaps", "secrets", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pipeline-runner-deploy
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pipeline-runner-deploy
+subjects:
+  - kind: ServiceAccount
+    name: pipeline-runner
+    namespace: cicd

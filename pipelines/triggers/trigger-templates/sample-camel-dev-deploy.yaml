@@ -1,0 +1,61 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: sample-camel-dev-deploy
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+    app.kubernetes.io/name: sample-camel
+    app.kubernetes.io/environment: dev
+spec:
+  params:
+    - name: git-repo-url
+    - name: git-revision
+    - name: git-ref
+    - name: git-branch
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: sample-camel-dev-deploy-
+        labels:
+          app.kubernetes.io/name: sample-camel
+          app.kubernetes.io/environment: dev
+          app.kubernetes.io/trigger: deploy
+          tekton.dev/pipeline: universal-deploy
+          triggers.tekton.dev/eventid: $(tt.params.git-revision)
+        annotations:
+          git-branch: $(tt.params.git-branch)
+          git-ref: $(tt.params.git-ref)
+      spec:
+        pipelineRef:
+          name: universal-deploy
+        serviceAccountName: pipeline-runner
+        taskRunSpecs:
+          - pipelineTaskName: sync-argocd
+            podTemplate:
+              env:
+                - name: ARGOCD_AUTH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: argocd-token
+                      key: token
+        params:
+          - name: git-url
+            value: $(tt.params.git-repo-url)
+          - name: git-revision
+            value: $(tt.params.git-revision)
+          - name: deploy-mode
+            value: argocd
+          - name: deploy-path
+            value: deploy/kustomize/overlays/dev
+          - name: target-namespace
+            value: sample-camel-dev
+          - name: argocd-app-name
+            value: sample-camel-dev
+          - name: wait-for-rollout
+            value: "true"
+        workspaces:
+          - name: shared-workspace
+            emptyDir: {}
+          - name: kubeconfig
+            emptyDir: {}
