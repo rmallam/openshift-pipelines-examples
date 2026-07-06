@@ -1,5 +1,6 @@
 ## Stage 1: build
 FROM registry.access.redhat.com/ubi9/openjdk-17:1.20 AS build
+USER 0
 WORKDIR /workspace
 COPY pom.xml .
 COPY src ./src
