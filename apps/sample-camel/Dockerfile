@@ -4,7 +4,7 @@ USER 0
 WORKDIR /workspace
 COPY pom.xml .
 COPY src ./src
-RUN mvn -B -q package -DskipTests
+RUN mvn -B package -DskipTests -Dquarkus.package.jar.enabled=true
 
 ## Stage 2: runtime
 FROM registry.access.redhat.com/ubi9/openjdk-17-runtime:1.20
