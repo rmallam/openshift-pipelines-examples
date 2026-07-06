@@ -22,6 +22,7 @@ while IFS= read -r -d '' file; do
   fi
 done < <(find . \
   \( -path './.git' -o -path './.cursor' -o -path './apps/sample-camel/target' \) -prune \
+  -o -path '*/helm/*/templates/*' -prune \
   -o -type f \( -name '*.yaml' -o -name '*.yml' \) -print0)
 
 echo
@@ -80,10 +81,8 @@ for values in values.yaml values-dev.yaml values-staging.yaml values-prod.yaml; 
 done
 
 echo
-echo "=== Plain YAML overlays ==="
-for dir in deploy/plain-yaml/overlays/dev deploy/plain-yaml/overlays/staging deploy/plain-yaml/overlays/prod; do
-  ok "YAML validated ${dir} (syntax check above)"
-done
+echo "=== Helm chart templates ==="
+ok "Helm templates validated via helm lint/template (Go templates excluded from YAML syntax check)"
 
 echo
 if [ "${FAILED}" -eq 0 ]; then
