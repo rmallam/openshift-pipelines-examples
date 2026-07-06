@@ -1,0 +1,22 @@
+# OpenShift Pipelines Operator — OLM Subscription
+#
+# Installed by Argo CD Application: argocd/applications/openshift-pipelines-operator.yaml
+# Docs: https://docs.redhat.com/en/documentation/red_hat_openshift_pipelines/latest/html/installing_and_configuring/installing-pipelines
+#
+# Pin a version by changing spec.channel (e.g. pipelines-1.17). See config/operators.yaml.
+
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-pipelines-operator
+  namespace: openshift-operators
+  labels:
+    app.kubernetes.io/part-of: tekton-pipelines
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  channel: latest
+  name: openshift-pipelines-operator-rh
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

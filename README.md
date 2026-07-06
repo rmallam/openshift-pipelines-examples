@@ -26,8 +26,18 @@ flowchart TB
 
     subgraph argocd_ns [argocd namespace]
       ROOT[tekton-root App]
+      OP[openshift-pipelines-operator App]
       PAPP[tekton-pipelines App]
       APPSET[sample-camel ApplicationSet]
+    end
+
+    subgraph olm [openshift-operators]
+      SUB[OLM Subscription]
+      OCP[OpenShift Pipelines Operator]
+    end
+
+    subgraph tekton_ns [openshift-pipelines]
+      TASKS[Inbuilt Tasks git-clone buildah maven]
     end
 
     subgraph workloads [sample-camel-dev/staging/prod]
@@ -37,23 +47,30 @@ flowchart TB
     TEKTON -->|push image| REG[(OpenShift Registry)]
     SYNC -->|sync| APPSET
 
+    ROOT --> OP
     ROOT --> PAPP
     ROOT --> APPSET
-    PAPP -->|sync| PL
-    APPSET -->|sync| DEP
+    OP -->|wave 0| SUB
+    SUB --> OCP
+    OCP --> TASKS
+    OCP --> tekton_ns
+    PAPP -->|wave 1| PL
+    APPSET -->|wave 2| DEP
+    TASKS -.->|cluster resolver| TEKTON
     DEP --> DEPLOY
     REG -->|image tag in kustomization| DEP
 ```
 
 | Layer | Tool | Responsibility |
 |-------|------|----------------|
+| **Operator** | Argo CD → OLM Subscription | Installs OpenShift Pipelines operator + inbuilt tasks |
 | **Trigger** | Tekton EventListener | GitHub webhook → PipelineRun on push |
 | **Build** | Tekton `universal-build` | Clone, test, build image, push to registry |
 | **Deploy (GitOps)** | Argo CD ApplicationSet | Sync kustomize overlays per environment |
 | **Dev deploy trigger** | Tekton → Argo CD sync | `main` branch push → sync `sample-camel-dev` only |
 | **Pipeline infra** | Argo CD Application | GitOps-manage Pipeline/RBAC/PVC/triggers in `cicd` ns |
 
-**Recommended flow:** Tekton builds → update image tag in Git (or use Argo CD Image Updater) → Argo CD auto-syncs workloads.
+**Full install guide:** [docs/INSTALL.md](docs/INSTALL.md)
 
 ## Repository layout
 
@@ -71,12 +88,24 @@ pipelines/
   pvc/                          # Workspace PVC
   pipelineruns/                 # Example PipelineRuns (not GitOps-synced)
   triggers/                     # EventListener, bindings, templates, Route
+operators/
+  openshift-pipelines/          # OLM Subscription (installed by Argo CD)
 argocd/
   root-application.yaml         # Bootstrap App-of-Apps (apply once)
+  rbac/argocd-olm.yaml          # One-time RBAC for operator install via Argo CD
   app-project/tekton-project.yaml
+  applications/openshift-pipelines-operator.yaml
   applications/tekton-pipelines.yaml
   applicationsets/sample-camel.yaml
+docs/
+  INSTALL.md                    # End-to-end installation guide
+scripts/
+  verify-install.sh             # Post-install verification (cluster)
+  ci-validate.sh                # Manifest validation (local/CI)
+.github/
+  workflows/ci.yaml             # GitHub Actions CI
 config/
+  operators.yaml                # Operator channel reference
   environments.yaml             # Environment parameter reference
   argocd.yaml                   # Argo CD settings reference
   argocd-token-secret.example.yaml
@@ -87,40 +116,45 @@ config/
 
 ## Prerequisites
 
-- OpenShift cluster with [OpenShift Pipelines](https://docs.openshift.com/pipelines/) operator installed
-- [Argo CD](https://argo-cd.readthedocs.io/) operator or instance in `argocd` namespace
+- OpenShift 4.x cluster with **cluster-admin** for bootstrap
+- **Argo CD already installed** (`argocd` or OpenShift GitOps namespace)
 - `oc` CLI logged in
 - Optional: `tkn` CLI, `argocd` CLI
 
-Verify inbuilt tasks and triggers:
-
-```bash
-oc get tasks -n openshift-pipelines
-oc get eventlistener -n cicd
-```
+The OpenShift Pipelines operator is **installed by this repo via Argo CD** — you do not need to install it manually from OperatorHub.
 
 ## Quick start
 
-### 1. Bootstrap Argo CD (recommended)
-
-Update the repo URL in `config/argocd.yaml` if you fork this project, then:
+See **[docs/INSTALL.md](docs/INSTALL.md)** for the complete end-to-end guide. Summary:
 
 ```bash
+# 1. Grant Argo CD OLM permissions (once, cluster-admin)
+oc apply -f argocd/rbac/argocd-olm.yaml
+
+# 2. Bootstrap everything via Argo CD
 oc apply -f argocd/root-application.yaml
+
+# 3. Wait for operator, then create secrets + GitHub webhook (see INSTALL.md)
+
+# 4. Verify
+./scripts/verify-install.sh
 ```
 
-This creates:
+### What Argo CD installs (sync waves)
 
-| Argo CD resource | Syncs |
-|------------------|-------|
-| `tekton-root` | AppProject + child Applications |
-| `tekton-pipelines` | Pipeline, RBAC, PVC → `cicd` namespace |
-| `sample-camel-dev/staging/prod` | Kustomize overlays → each env namespace |
+| Wave | Argo CD app | Delivers |
+|------|-------------|----------|
+| 0 | `openshift-pipelines-operator` | OLM Subscription → operator → `openshift-pipelines` ns |
+| 1 | `tekton-pipelines` | Pipelines, triggers, RBAC, PVC → `cicd` ns |
+| 2 | `sample-camel-dev/staging/prod` | Workload manifests → env namespaces |
 
-Check status:
+### 1. Bootstrap (detail)
+
+After `oc apply -f argocd/root-application.yaml`, check status:
 
 ```bash
 argocd app list
+argocd app get openshift-pipelines-operator
 argocd app get tekton-pipelines
 argocd app get sample-camel-dev
 ```
@@ -288,3 +322,27 @@ curl http://localhost:8080/api/hello
 - `.cursor/rules/reuse-inbuilt-tasks.mdc` — never create custom tasks
 - `.cursor/rules/coding-standards.mdc` — repo conventions
 - `.cursor/rules/verify-before-done.mdc` — verification checklist
+
+## GitHub Actions CI
+
+On every push/PR to `main`, [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) runs:
+
+| Job | What it checks |
+|-----|----------------|
+| **validate** | YAML syntax, no custom Tasks, cluster resolver, kustomize build, helm lint/template |
+| **test-sample-camel** | `mvn test` + package build |
+| **build-sample-camel-image** | Podman build, container smoke test (`/api/hello`) |
+
+On push to `main`, the image is published to:
+
+```
+ghcr.io/rmallam/openshift-pipelines-examples/sample-camel:latest
+ghcr.io/rmallam/openshift-pipelines-examples/sample-camel:<git-sha>
+```
+
+Run locally:
+
+```bash
+./scripts/ci-validate.sh
+cd apps/sample-camel && mvn test
+```

@@ -1,9 +1,9 @@
 # Bootstrap Application — apply once to hand control to Argo CD.
+# Prerequisites: Argo CD installed, oc apply -f argocd/rbac/argocd-olm.yaml
 #
 #   oc apply -f argocd/root-application.yaml
 #
-# This App-of-Apps syncs the AppProject, tekton-pipelines Application, and
-# sample-camel ApplicationSet from Git. After bootstrap, manage these via Git only.
+# Full guide: docs/INSTALL.md
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

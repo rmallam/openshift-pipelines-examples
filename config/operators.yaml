@@ -1,0 +1,24 @@
+# OpenShift Pipelines Operator configuration reference.
+#
+# List available channels on your cluster:
+#   oc get packagemanifest openshift-pipelines-operator-rh \
+#     -n openshift-marketplace -o jsonpath='{.status.channels[*].name}{"\n"}'
+
+operator:
+  name: openshift-pipelines-operator-rh
+  package: openshift-pipelines-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  subscriptionNamespace: openshift-operators
+  # Use "latest" for newest stable, or pin e.g. "pipelines-1.17"
+  channel: latest
+  installPlanApproval: Automatic
+
+# Namespace created automatically by the operator
+targetNamespace: openshift-pipelines
+
+# Verify after install:
+#   oc get subscription openshift-pipelines-operator -n openshift-operators
+#   oc get tektonconfig
+#   oc get pods -n openshift-pipelines
+#   oc get tasks -n openshift-pipelines

@@ -1,12 +1,10 @@
-# Argo CD configuration — update these values for your cluster before bootstrapping.
+# Argo CD configuration reference.
 #
-# Bootstrap once:
+# Bootstrap (assumes Argo CD is already installed):
+#   oc apply -f argocd/rbac/argocd-olm.yaml
 #   oc apply -f argocd/root-application.yaml
 #
-# Or if Argo CD is not yet managing this repo:
-#   oc apply -f argocd/app-project/tekton-project.yaml
-#   oc apply -f argocd/applications/tekton-pipelines.yaml
-#   oc apply -f argocd/applicationsets/sample-camel.yaml
+# Full guide: docs/INSTALL.md
 
 git:
   repoURL: https://github.com/rmallam/openshift-pipelines-examples.git
@@ -16,28 +14,35 @@ argocd:
   namespace: argocd
   project: tekton
 
+operator:
+  subscriptionNamespace: openshift-operators
+  targetNamespace: openshift-pipelines
+  channel: latest
+
 pipelines:
-  # Namespace where Tekton Pipeline/PipelineRun resources live
   namespace: cicd
 
 imageRegistry: image-registry.openshift-image-registry.svc:5000
 
 applications:
-  tektonPipelines:
-    name: tekton-pipelines
-  sampleCamel:
-    namePrefix: sample-camel
+  root: tekton-root
+  operator: openshift-pipelines-operator
+  tektonPipelines: tekton-pipelines
+  sampleCamelPrefix: sample-camel
 
 environments:
   dev:
     namespace: sample-camel-dev
     kustomizePath: deploy/kustomize/overlays/dev
     image: sample-camel-dev/sample-camel
+    argocdApp: sample-camel-dev
   staging:
     namespace: sample-camel-staging
     kustomizePath: deploy/kustomize/overlays/staging
     image: sample-camel-staging/sample-camel
+    argocdApp: sample-camel-staging
   prod:
     namespace: sample-camel-prod
     kustomizePath: deploy/kustomize/overlays/prod
     image: sample-camel-prod/sample-camel
+    argocdApp: sample-camel-prod

@@ -38,6 +38,8 @@ spec:
         app.kubernetes.io/name: sample-camel
         app.kubernetes.io/environment: '{{.env}}'
         app.kubernetes.io/part-of: tekton-pipelines
+      annotations:
+        argocd.argoproj.io/sync-wave: "2"
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:

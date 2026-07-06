@@ -27,6 +27,10 @@ After any pipeline, deploy manifest, or application change, verify before tellin
    helm lint deploy/helm/sample-camel
    helm template sample-camel deploy/helm/sample-camel -f deploy/helm/sample-camel/values-prod.yaml
    ```
+7. **CI script** (runs all manifest checks):
+   ```bash
+   ./scripts/ci-validate.sh
+   ```
 
 ## Agent completion checklist
 

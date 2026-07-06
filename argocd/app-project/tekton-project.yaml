@@ -11,6 +11,10 @@ spec:
     - https://github.com/rmallam/openshift-pipelines-examples.git
     - '*'
   destinations:
+    - namespace: openshift-operators
+      server: https://kubernetes.default.svc
+    - namespace: openshift-pipelines
+      server: https://kubernetes.default.svc
     - namespace: cicd
       server: https://kubernetes.default.svc
     - namespace: sample-camel-dev
@@ -24,6 +28,10 @@ spec:
       kind: ClusterRoleBinding
     - group: rbac.authorization.k8s.io
       kind: ClusterRole
+    - group: operator.tekton.dev
+      kind: TektonConfig
+    - group: operator.tekton.dev
+      kind: TektonInstallerSet
   namespaceResourceWhitelist:
     - group: '*'
       kind: '*'

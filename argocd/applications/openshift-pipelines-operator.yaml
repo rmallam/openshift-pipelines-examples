@@ -1,13 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: tekton-pipelines
+  name: openshift-pipelines-operator
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: tekton-pipelines
-    app.kubernetes.io/component: cicd
+    app.kubernetes.io/component: operator
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "0"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -15,26 +15,25 @@ spec:
   source:
     repoURL: https://github.com/rmallam/openshift-pipelines-examples.git
     targetRevision: main
-    path: pipelines
+    path: operators/openshift-pipelines
   destination:
     server: https://kubernetes.default.svc
-    namespace: cicd
+    namespace: openshift-operators
   syncPolicy:
     automated:
-      prune: true
+      prune: false
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
-      - ApplyOutOfSyncOnly=true
-      - SkipDryRunOnMissingResource=true
+      - CreateNamespace=false
+      - ServerSideApply=true
     retry:
-      limit: 10
+      limit: 5
       backoff:
         duration: 30s
         factor: 2
-        maxDuration: 10m
+        maxDuration: 5m
   ignoreDifferences:
-    - group: tekton.dev
-      kind: PipelineRun
+    - group: operators.coreos.com
+      kind: Subscription
       jsonPointers:
         - /status
